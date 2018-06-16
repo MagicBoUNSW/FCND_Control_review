@@ -143,28 +143,24 @@ V3F QuadControl::RollPitchControl(V3F accelCmd, Quaternion<float> attitude, floa
     Mat3x3F R = attitude.RotationMatrix_IwrtB();
     
     ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
-    if ( collThrustCmd > 0.0) {
-        float thrust_normalized = - collThrustCmd / mass;
-        float b_x_cmd = accelCmd.x / thrust_normalized;
+    if ( collThrustCmd > 0 ) {
+        float c = - collThrustCmd / mass;
+        float b_x_cmd = CONSTRAIN(accelCmd.x / c, -maxTiltAngle, maxTiltAngle);
         float b_x_err = b_x_cmd - R(0,2);
         float b_x_p_term = kpBank * b_x_err;
         
-        float b_y_cmd = accelCmd.y / thrust_normalized;
+        float b_y_cmd = CONSTRAIN(accelCmd.y / c, -maxTiltAngle, maxTiltAngle);
         float b_y_err = b_y_cmd - R(1,2);
         float b_y_p_term = kpBank * b_y_err;
-       
-        pqrCmd.x =  (1/ R(2,2))* (R(1,0) * b_x_p_term - R(0,0) * b_y_p_term);
-       
-        pqrCmd.y =  (1/R(2,2)) *(R(1,1) * b_x_p_term - R(0,1) * b_y_p_term);
-       
         
+        pqrCmd.x = (R(1,0) * b_x_p_term - R(0,0) * b_y_p_term) / R(2,2);
+        pqrCmd.y = (R(1,1) * b_x_p_term - R(0,1) * b_y_p_term) / R(2,2);
     } else {
         pqrCmd.x = 0.0;
         pqrCmd.y = 0.0;
     }
     
     pqrCmd.z = 0;
-   
     /////////////////////////////// END STUDENT CODE ////////////////////////////
     
     return pqrCmd;
@@ -209,18 +205,6 @@ float QuadControl::AltitudeControl(float posZCmd, float velZCmd, float posZ, flo
     
     float acc = ( u_1_bar - CONST_GRAVITY ) / b_z;
     
-    //Dead Code works inconsistent
-    /*if (acc > (maxAscentRate/dt) )
-     {
-     acc = - mass * (maxAscentRate/dt);
-     }
-     else if (acc < (maxDescentRate /dt))
-     {
-     acc = - mass * (maxDescentRate/dt);
-     }*/
-     //Dead Code works inconsistent
-    
-    // CONSTRAIN from MathUtils is efficient way to clip no like np.clip in python
     thrust = - mass * CONSTRAIN(acc, - maxAscentRate / dt, maxAscentRate / dt);
     /////////////////////////////// END STUDENT CODE ////////////////////////////
     
@@ -254,27 +238,25 @@ V3F QuadControl::LateralPositionControl(V3F posCmd, V3F velCmd, V3F pos, V3F vel
     
     ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
     
-    V3F kpPosGain;
-    kpPosGain.x = kpPosXY;
-    kpPosGain.y = kpPosXY;
-    kpPosGain.z = 0.f;
+    V3F kpPos;
+    kpPos.x = kpPosXY;
+    kpPos.y = kpPosXY;
+    kpPos.z = 0.f;
     
-    V3F kpVelGain;
-    kpVelGain.x = kpVelXY;
-    kpVelGain.y = kpVelXY;
-    kpVelGain.z = 0.f;
+    V3F kpVel;
+    kpVel.x = kpVelXY;
+    kpVel.y = kpVelXY;
+    kpVel.z = 0.f;
     
-    // Input from slack Friends- use Euclidean norm provided in V3F.mag().
-    V3F velCmdMargin;
+    V3F capVelCmd;
     if ( velCmd.mag() > maxSpeedXY ) {
-        velCmdMargin = velCmd.norm() * maxSpeedXY;
-    } 
+        capVelCmd = velCmd.norm() * maxSpeedXY;
+    } else {
+        capVelCmd = velCmd;
+    }
     
-    V3F position_error = posCmd - pos;
-    V3F velocity_error = velCmdMargin - vel;
-    accelCmd = kpPosGain * position_error + kpVelGain * velocity_error+ accelCmd;
-
-    // Input from slack Friends- use Euclidean norm provided in V3F.mag().
+    accelCmd = kpPos * ( posCmd - pos ) + kpVel * ( capVelCmd - vel ) + accelCmd;
+    
     if ( accelCmd.mag() > maxAccelXY ) {
         accelCmd = accelCmd.norm() * maxAccelXY;
     }
@@ -300,13 +282,13 @@ float QuadControl::YawControl(float yawCmd, float yaw)
     float yawRateCmd=0;
     ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
     
-    float yaw_cmd_within_2PI = 0;
+    float yaw_cmd_2_pi = 0;
     if ( yawCmd > 0 ) {
-        yaw_cmd_within_2PI = fmodf(yawCmd, 2 * F_PI);
+        yaw_cmd_2_pi = fmodf(yawCmd, 2 * F_PI);
     } else {
-        yaw_cmd_within_2PI = -fmodf(-yawCmd, 2 * F_PI);
+        yaw_cmd_2_pi = -fmodf(-yawCmd, 2 * F_PI);
     }
-    float err = yaw_cmd_within_2PI - yaw;
+    float err = yaw_cmd_2_pi - yaw;
     if ( err > F_PI ) {
         err -= 2 * F_PI;
     } if ( err < -F_PI ) {
